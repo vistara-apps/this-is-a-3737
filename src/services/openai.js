@@ -1,13 +1,24 @@
 import OpenAI from 'openai'
+import { handleError, retryOperation } from '../utils/errorHandler'
 
-// Initialize OpenAI client
+// Initialize OpenAI client with proper environment variables
 const openai = new OpenAI({
-  apiKey: process.env.VITE_OPENAI_API_KEY || 'your-openai-api-key-here',
-  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: import.meta.env.VITE_OPENAI_API_KEY || 'your-openai-api-key-here',
+  baseURL: import.meta.env.VITE_OPENAI_BASE_URL || "https://openrouter.ai/api/v1",
   dangerouslyAllowBrowser: true,
 })
 
+// Validate API key on initialization
+if (!import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.VITE_OPENAI_API_KEY === 'your-openai-api-key-here') {
+  console.warn('OpenAI API key not configured. AI features will use fallback content.')
+}
+
 export const generateLegalGuide = async (state, category) => {
+  // Use fallback if API key not configured
+  if (!import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.VITE_OPENAI_API_KEY === 'your-openai-api-key-here') {
+    return getFallbackLegalGuide(state, category)
+  }
+
   try {
     const prompt = `Create a comprehensive but concise legal guide for ${category} in ${state}. 
     
@@ -21,25 +32,28 @@ export const generateLegalGuide = async (state, category) => {
     Keep it practical, easy to understand, and actionable. Format as plain text with clear sections.
     Focus on protection of constitutional rights while remaining respectful of law enforcement.`
 
-    const completion = await openai.chat.completions.create({
-      model: "google/gemini-2.0-flash-001",
-      messages: [
-        {
-          role: "system",
-          content: "You are a legal information assistant. Provide accurate, educational information about legal rights. Always include disclaimers that this is not legal advice and recommend consulting with qualified attorneys for specific situations."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      max_tokens: 1500,
-      temperature: 0.3
-    })
+    const completion = await retryOperation(async () => {
+      return await openai.chat.completions.create({
+        model: "google/gemini-2.0-flash-001",
+        messages: [
+          {
+            role: "system",
+            content: "You are a legal information assistant. Provide accurate, educational information about legal rights. Always include disclaimers that this is not legal advice and recommend consulting with qualified attorneys for specific situations."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        max_tokens: 1500,
+        temperature: 0.3
+      })
+    }, 2, 1000)
 
     return completion.choices[0].message.content
   } catch (error) {
-    console.error('Error generating legal guide:', error)
+    const handledError = handleError(error, { service: 'openai', operation: 'generateLegalGuide', state, category })
+    console.error('Error generating legal guide:', handledError)
     
     // Fallback content if API fails
     return getFallbackLegalGuide(state, category)
@@ -47,6 +61,11 @@ export const generateLegalGuide = async (state, category) => {
 }
 
 export const generateDeescalationScript = async (scenario, language) => {
+  // Use fallback if API key not configured
+  if (!import.meta.env.VITE_OPENAI_API_KEY || import.meta.env.VITE_OPENAI_API_KEY === 'your-openai-api-key-here') {
+    return getFallbackScript(scenario, language)
+  }
+
   try {
     const languageInstruction = language === 'es' ? 'Respond in Spanish' : 'Respond in English'
     
@@ -60,25 +79,28 @@ export const generateDeescalationScript = async (scenario, language) => {
     
     Format as simple sentences, one per line. Keep language clear and non-threatening.`
 
-    const completion = await openai.chat.completions.create({
-      model: "google/gemini-2.0-flash-001",
-      messages: [
-        {
-          role: "system",
-          content: "You are a conflict de-escalation expert. Create phrases that help people communicate calmly and assertively while protecting their rights."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      max_tokens: 800,
-      temperature: 0.2
-    })
+    const completion = await retryOperation(async () => {
+      return await openai.chat.completions.create({
+        model: "google/gemini-2.0-flash-001",
+        messages: [
+          {
+            role: "system",
+            content: "You are a conflict de-escalation expert. Create phrases that help people communicate calmly and assertively while protecting their rights."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        max_tokens: 800,
+        temperature: 0.2
+      })
+    }, 2, 1000)
 
     return completion.choices[0].message.content
   } catch (error) {
-    console.error('Error generating de-escalation script:', error)
+    const handledError = handleError(error, { service: 'openai', operation: 'generateDeescalationScript', scenario, language })
+    console.error('Error generating de-escalation script:', handledError)
     
     // Fallback content if API fails
     return getFallbackScript(scenario, language)
